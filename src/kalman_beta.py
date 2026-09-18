@@ -233,7 +233,7 @@ def compare_lag_around_date(
 
     Useful for visually/numerically confirming the Kalman filter reacts
     faster than the rolling window around a real, dateable shift (e.g. a
-    known regime transition from Phase 4).
+    known regime transition; see `regime_detection.py`).
     """
     start = event_date - pd.Timedelta(days=window_days)
     end = event_date + pd.Timedelta(days=window_days)

@@ -1,7 +1,6 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: all 10 build phases complete; deployed on Streamlit Community Cloud** (see
-[Deployment](#deployment-phase-10--deployment-ready) below).
+**Status:** live on Streamlit Community Cloud — see [Deployment](#deployment) below.
 
 ![Fund X-Ray dashboard — static exposures tab](docs/dashboard_screenshot.png)
 
@@ -18,10 +17,10 @@ style-drift score — as a Streamlit dashboard.
 collapses from ~10% in calm markets to under 2% in stressed ones, while `Mkt-RF` beta barely
 moves (~1.04 in both) — the fund's *market* exposure is stable, but its *diversification*
 quietly disappears exactly when it matters most. A whole-sample static style analysis, run
-alone, would never surface this; see the [regime-conditional risk metrics](#regime-conditional-risk-attribution-phase-5--done)
+alone, would never surface this; see the [regime-conditional risk metrics](#regime-conditional-risk-attribution)
 section below for the full table.
 
-## Methodology (summary; full detail added as each phase lands)
+## Methodology
 
 - **Static style analysis**: Sharpe's (1992) constrained returns-based style analysis (factor
   weights bounded [0,1], summing to 1, solved via `scipy.optimize`), compared against an
@@ -43,16 +42,16 @@ section below for the full table.
 src/
   config.py            # all tunable parameters (dates, tickers, factor set, thresholds)
   data_loader.py        # DataLoader: fetches/caches/aligns prices + Fama-French factors
-  style_analysis.py     # constrained + unconstrained regression (Phase 2)
-  kalman_beta.py         # rolling OLS + Kalman filter time-varying beta (Phase 3)
-  regime_detection.py    # HMM regime labeling (Phase 4)
-  risk_metrics.py         # regime-conditional VaR/CVaR/R^2 (Phase 5)
-  drift_score.py          # style drift + crowding score (Phase 6/7)
-  viz_theme.py             # shared Plotly color/layout theme for app.py (Phase 8)
+  style_analysis.py     # constrained + unconstrained regression
+  kalman_beta.py         # rolling OLS + Kalman filter time-varying beta
+  regime_detection.py    # HMM regime labeling
+  risk_metrics.py         # regime-conditional VaR/CVaR/R^2
+  drift_score.py          # style drift + crowding score
+  viz_theme.py             # shared Plotly color/layout theme for app.py
 tests/                    # unit tests per module
 notebooks/                # 01_methodology_walkthrough.ipynb (narrated validation)
 docs/                     # README screenshot
-app.py                    # Streamlit dashboard (Phase 8)
+app.py                    # Streamlit dashboard
 ```
 
 ## Data sources (all free)
@@ -62,7 +61,7 @@ app.py                    # Streamlit dashboard (Phase 8)
 - Regime signal: `^VIX` and/or realized SPY volatility via `yfinance`
 - Peer group: configurable ticker list in `config.py` for the crowding score
 
-## Data layer (Phase 1 — done)
+## Data layer
 
 `DataLoader` (`src/data_loader.py`) fetches prices and Fama-French factors, caches raw pulls
 as parquet under `data/cache/` (skipped if the cache is fresh — 1 day for prices, 7 days for
@@ -83,7 +82,7 @@ dataset.excess_returns    # fund_returns - risk_free
 dataset.factor_returns    # Mkt-RF, SMB, HML, RMW, CMA, Mom
 ```
 
-## Static style analysis (Phase 2 — done)
+## Static style analysis
 
 `src/style_analysis.py` implements the same linear factor model two ways, so the disagreement
 between them is itself informative:
@@ -116,7 +115,7 @@ unconstrained = run_unconstrained_ols(dataset.excess_returns, dataset.factor_ret
 compare_style_results(constrained, unconstrained)  # side-by-side table, flags boundary weights
 ```
 
-## Time-varying exposure (Phase 3 — done)
+## Time-varying exposure
 
 `src/kalman_beta.py` implements both a naive baseline and an improved estimator for the same
 question — how does a fund's factor exposure move through time?
@@ -153,13 +152,13 @@ kalman = kalman_filter_betas(dataset.excess_returns, dataset.factor_returns)  # 
 compare_lag_around_date(rolling, kalman, event_date=pd.Timestamp("2020-03-23"), factor="Mom")
 ```
 
-## Regime detection (Phase 4 — done)
+## Regime detection
 
 `src/regime_detection.py` fits a Gaussian Hidden Markov Model (`hmmlearn`) on **market-wide**
 signals only — SPY daily returns plus VIX level (or trailing realized SPY volatility if VIX
 isn't supplied) — deliberately never on the target fund's own returns. If "stressed" were
 partly defined by the fund's own bad days, every downstream regime-conditional risk number
-(Phase 5) would be circular. `hmmlearn` assigns state indices arbitrarily, so states are
+would be circular. `hmmlearn` assigns state indices arbitrarily, so states are
 relabeled after fitting by ascending mean of the volatility feature ("calm" is always the
 lowest-volatility state).
 
@@ -189,13 +188,14 @@ result.regime_probabilities   # smoothed posterior probability per regime
 validate_against_known_stress_periods(result)  # sanity-check table above
 ```
 
-## Regime-conditional risk attribution (Phase 5 — done)
+## Regime-conditional risk attribution
 
 `src/risk_metrics.py` recomputes, within each Phase-4 regime (plus "overall" as a baseline):
 VaR(95%) and CVaR(95%) via **historical** (empirical-quantile) simulation rather than a
 parametric/Gaussian formula — a stress regime concentrates exactly the extreme days that make
 the normality assumption weakest, so a parametric VaR would understate tail risk in the regime
-where it matters most; factor betas and R² via the same unconstrained OLS as Phase 2, refit on
+where it matters most; factor betas and R² via the same unconstrained OLS as the static style
+analysis above, refit on
 only that regime's observations; and a per-factor **Euler variance decomposition**
 (`beta_j * (Sigma_f @ beta)_j`), which sums exactly to the factor-driven share of total variance
 (verified in tests), with the residual making up the idiosyncratic share.
@@ -226,9 +226,9 @@ metrics = compute_regime_risk_metrics(
 regime_comparison_table(metrics)  # one row per regime + "overall", side by side
 ```
 
-## Style Drift Score (Phase 6 — done)
+## Style Drift Score
 
-`src/drift_score.py` reduces each date's factor-exposure vector (from Phase 3's rolling or
+`src/drift_score.py` reduces each date's factor-exposure vector (from the rolling or
 Kalman betas — `const`/alpha is excluded, since it isn't a style exposure) to a single distance
 from a baseline vector: either the fund's own exposure averaged over its first 12 months
 (default), or a user-supplied stated-mandate vector. Two metrics are offered because they answer
@@ -254,10 +254,10 @@ drift.threshold        # baseline mean + 2*std
 drift.flagged_events   # contiguous episodes above threshold: start/end/peak_date/peak_drift
 ```
 
-## Crowding Score (Phase 7 — stretch goal, done)
+## Crowding Score (stretch goal)
 
 Also in `src/drift_score.py`: for a peer group of tickers, `build_peer_exposure_vectors()` fits
-the same rolling-OLS betas from Phase 3 to each peer independently, and `compute_crowding_score()`
+the same rolling-OLS betas used above to each peer independently, and `compute_crowding_score()`
 averages pairwise cosine *similarity* (not distance — 1.0 means every peer's exposure vector
 points the same direction) across all peer pairs at each date. Peers are allowed ragged
 histories (different inception dates, different rolling-window burn-ins): each date's score
@@ -270,7 +270,7 @@ growth funds/ETFs) shows persistently high average pairwise cosine similarity (2
 0.95, range 0.90–0.97) — genuinely overlapping, crowded positioning across the whole period,
 not just during any one stretch. It ticks up modestly during the COVID window (mean 0.963 vs.
 0.957 over a 2015–2016 baseline period) — a small effect, but directionally consistent with the
-"correlations rise in stress" pattern already seen in Phase 5's regime-conditional risk metrics.
+"correlations rise in stress" pattern already seen in the regime-conditional risk metrics above.
 
 ```python
 from src.drift_score import build_peer_exposure_vectors, compute_crowding_score
@@ -281,14 +281,14 @@ crowding.crowding        # time series of average pairwise cosine similarity
 crowding.n_peers_used    # how many peers contributed to each date's score
 ```
 
-## Streamlit dashboard (Phase 8 — done)
+## Streamlit dashboard
 
 `app.py` wires every module above behind one sidebar (ticker, date range, rolling window,
-regime count, peer group) into five tabs: **Static Exposures** (Phase 2's comparison chart and
-table), **Time-Varying Exposures** (Phase 3's rolling-vs-Kalman overlay, toggleable per factor),
-**Regime View** (Phase 4's regime-shaded price chart plus Phase 5's risk-metrics table and
-stress-period validation), **Style Drift** (Phase 6's drift chart with threshold and flagged
-episodes), and **Crowding Score** (Phase 7). All charts use a fixed, accessibility-validated
+regime count, peer group) into five tabs: **Static Exposures** (the comparison chart and
+table above), **Time-Varying Exposures** (the rolling-vs-Kalman overlay, toggleable per factor),
+**Regime View** (the regime-shaded price chart plus the risk-metrics table and
+stress-period validation), **Style Drift** (the drift chart with threshold and flagged
+episodes), and **Crowding Score**. All charts use a fixed, accessibility-validated
 color palette (`src/viz_theme.py`) where each factor and each regime label keeps the same color
 across every tab, and every network call / model fit is wrapped in `st.cache_data` /
 `st.cache_resource` so Streamlit's rerun-on-every-interaction model doesn't re-fetch or re-fit
@@ -299,10 +299,10 @@ under `data/cache/`, created on demand — this works unchanged on Streamlit Com
 ephemeral filesystem. Every data source (`yfinance`, the Kenneth French library) is free and
 unauthenticated, so `st.secrets` isn't needed at all.
 
-## Methodology notebook (Phase 9 — done)
+## Methodology notebook
 
 [`notebooks/01_methodology_walkthrough.ipynb`](notebooks/01_methodology_walkthrough.ipynb) is a
-single, executed, narrated run through every phase above on one real fund (`FMAGX`) — it exists
+single, executed, narrated run through the full pipeline above on one real fund (`FMAGX`) — it exists
 to *validate* each modeling decision (SPY's near-100% `Mkt-RF` loading, the Kalman filter
 visibly leading the rolling window around the COVID crash, the regime model's agreement with
 known stress windows) rather than just demonstrate the code. Every number in it comes straight
@@ -328,7 +328,7 @@ pytest              # run the test suite
 streamlit run app.py  # launch the dashboard at localhost:8501
 ```
 
-## Deployment (Phase 10 — deployment-ready)
+## Deployment
 
 **Live dashboard**: [fund-xray-aduyuzapdmiwtghrcdxrus.streamlit.app](https://fund-xray-aduyuzapdmiwtghrcdxrus.streamlit.app)
 
@@ -336,11 +336,11 @@ Deployed on Streamlit Community Cloud from `main`. The steps below reproduce tha
 
 `requirements.txt` holds only what `app.py` actually imports (verified by installing it alone,
 with no dev dependencies, into a throwaway virtualenv and confirming the app boots against a
-cold — empty — parquet cache before this phase was called done). Two packages that snuck into
-earlier phases' `requirements.txt` were removed once nothing in `src/`/`app.py` turned out to
-import them: `pykalman` (the Kalman filter is hand-rolled in `src/kalman_beta.py` — see that
-module's docstring for why) and `scikit-learn` (never used). `matplotlib` moved to
-`requirements-dev.txt` since only the notebook needs it, not the dashboard.
+cold — empty — parquet cache). Two packages that had accumulated in `requirements.txt` were
+removed once nothing in `src/`/`app.py` turned out to import them: `pykalman` (the Kalman
+filter is hand-rolled in `src/kalman_beta.py` — see that module's docstring for why) and
+`scikit-learn` (never used). `matplotlib` moved to `requirements-dev.txt` since only the
+notebook needs it, not the dashboard.
 
 To deploy on [Streamlit Community Cloud](https://share.streamlit.io):
 
@@ -362,21 +362,6 @@ Streamlit re-runs the whole script on every load regardless of which tab is visu
 Measured locally against a cold cache: ~25-30 seconds. Every subsequent interaction (switching
 tabs, moving a slider) is fast, since `st.cache_data`/`st.cache_resource` mean only a changed
 input triggers real work again.
-
-## Build order
-
-1. ✅ Scaffold repo structure + config + data loader, verify data pulls correctly
-2. ✅ Static style analysis (constrained + unconstrained), validated against SPY
-3. ✅ Rolling OLS and Kalman filter time-varying betas, compared visually
-4. ✅ HMM regime detection, validated against known stress periods
-5. ✅ Regime-conditional risk metrics
-6. ✅ Style drift score
-7. ✅ (Stretch) Crowding score
-8. ✅ Streamlit dashboard wiring all modules together
-9. ✅ README finding, LIMITATIONS.md, unit tests (plus the methodology notebook and a final
-   type-hint/lint audit)
-10. ✅ Streamlit Cloud deployment (trimmed `requirements.txt`, verified a cold-cache boot in a
-    dependencies-only virtualenv, added `.python-version`, deployed) — see **Deployment** above.
 
 ## Limitations
 

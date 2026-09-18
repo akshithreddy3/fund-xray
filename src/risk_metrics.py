@@ -2,7 +2,7 @@
 
 Answers the question a single, whole-sample risk number can't: what
 does this fund's risk actually look like *during* a given market
-regime (Phase 4), as opposed to on average across all regimes blended
+regime (see `regime_detection.py`), as opposed to on average across all regimes blended
 together? For each regime (plus "overall", as a baseline), this module
 recomputes:
 
@@ -128,7 +128,7 @@ def compute_regime_risk_metrics(
     """Risk metrics for "overall" plus every regime label present in the data.
 
     `regime_labels` typically comes from a model fit on independent
-    market data (Phase 4) over a different date range than the fund's
+    market data (`regime_detection.py`) over a different date range than the fund's
     own history, so dates are inner-joined here; any non-overlap is
     logged rather than silently dropped.
     """

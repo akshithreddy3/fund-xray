@@ -1,7 +1,7 @@
 # Limitations
 
-This file is built up incrementally as each phase lands, not written retroactively — each
-entry reflects a real caveat that surfaced while implementing that module.
+Each entry below reflects a real caveat that surfaced while implementing the corresponding
+module, not a boilerplate disclaimer.
 
 ## Returns-based analysis, generally
 
@@ -11,8 +11,8 @@ entry reflects a real caveat that surfaced while implementing that module.
   short-term tactical trades — is invisible to every model in this project.
 - Every estimate assumes the fund's exposures are reasonably stable *within* the estimation
   window. A fund that changes its factor exposure mid-window will show up as a blend of the two
-  regimes, not either one cleanly (this is exactly the motivation for Phase 3's time-varying
-  approach, but even that has a reaction lag — see below once implemented).
+  regimes, not either one cleanly (this is exactly the motivation for the time-varying exposure
+  approach below, though even that has a reaction lag).
 
 ## Style analysis (`src/style_analysis.py`)
 
@@ -38,8 +38,9 @@ entry reflects a real caveat that surfaced while implementing that module.
 
 - **The Kalman filter assumes constant observation (idiosyncratic) variance R for the whole
   sample**, estimated once from the warm-up window. A real fund's residual volatility is not
-  actually constant — it's typically higher during stress regimes (see Phase 4/5) — so the
-  filter's uncertainty band, and to a lesser extent its gain, is mis-specified precisely during
+  actually constant — it's typically higher during stress regimes (see the regime detection and
+  regime-conditional risk sections below) — so the filter's uncertainty band, and to a lesser
+  extent its gain, is mis-specified precisely during
   the periods most interesting to a risk analysis. A more complete model would let R vary too
   (e.g. via a separate volatility filter or regime-conditional R), which this project doesn't
   implement.

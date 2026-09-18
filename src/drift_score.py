@@ -1,6 +1,6 @@
 """Style Drift Score: how far has a fund's exposure moved from its own baseline?
 
-Takes the time-varying exposure vectors from Phase 3 (rolling-OLS or
+Takes the time-varying exposure vectors from `kalman_beta.py` (rolling-OLS or
 Kalman betas, factor columns only -- `const`/alpha is never part of a
 "style" vector) and reduces each date's vector to a single number: its
 distance from a reference ("baseline") exposure vector. The baseline is
@@ -29,9 +29,9 @@ around *during its own baseline period* -- not a single universal
 cutoff, which would treat a fund with a naturally noisy baseline the
 same as one with a very stable one.
 
-This module also computes the **Crowding Score** (Phase 7, stretch
+This module also computes the **Crowding Score** (a stretch
 goal): for a peer group of tickers, each peer's own time-varying
-exposure vector (same Phase-3 rolling-OLS machinery, one fit per
+exposure vector (same rolling-OLS machinery as above, one fit per
 ticker) is compared pairwise via cosine similarity, averaged across
 all pairs at each date. A high, rising average pairwise similarity
 means the peer group's managers are converging on the same factor
@@ -207,7 +207,7 @@ def compute_style_drift(
 
 
 # ---------------------------------------------------------------------------
-# Crowding score (Phase 7, stretch goal)
+# Crowding score (stretch goal)
 # ---------------------------------------------------------------------------
 
 
@@ -238,7 +238,7 @@ def build_peer_exposure_vectors(
     end: date | str,
     window: int = min(config.ROLLING_WINDOWS),
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
-    """Fetch each peer's dataset and fit rolling-OLS betas (Phase 3 machinery).
+    """Fetch each peer's dataset and fit rolling-OLS betas (`kalman_beta.py` machinery).
 
     A peer that fails to fetch (bad/delisted ticker, no overlapping factor
     history, etc.) is skipped -- logged explicitly, not silently dropped --

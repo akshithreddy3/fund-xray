@@ -6,7 +6,7 @@ fund's own returns. This independence is deliberate: if "stressed" were
 partly defined by the fund's own bad days, every downstream
 regime-conditional risk number would be circular (the fund would look
 risky in "stress" almost by construction). Regimes here describe the
-market environment; risk_metrics.py (Phase 5) then asks how a given
+market environment; risk_metrics.py then asks how a given
 fund's returns *behave conditional on* that independently-defined
 environment.
 
