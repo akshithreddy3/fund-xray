@@ -1,6 +1,7 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 2 of 10 complete (static style analysis).** See Build Order below.
+**Status: Phase 3 of 10 complete (time-varying exposure: rolling OLS vs. Kalman filter).** See
+Build Order below.
 
 ## Problem statement
 
@@ -104,6 +105,43 @@ unconstrained = run_unconstrained_ols(dataset.excess_returns, dataset.factor_ret
 compare_style_results(constrained, unconstrained)  # side-by-side table, flags boundary weights
 ```
 
+## Time-varying exposure (Phase 3 — done)
+
+`src/kalman_beta.py` implements both a naive baseline and an improved estimator for the same
+question — how does a fund's factor exposure move through time?
+
+- **Rolling-window OLS** (252-day and 126-day): refit an ordinary least squares regression on
+  the trailing window at every date. Simple, but has two known failure modes: it takes up to a
+  full window to fully absorb a real shift (lag), and an old observation gets full weight right
+  up until it drops out of the window, then vanishes abruptly (a "ghosting" step artifact).
+- **Kalman filter**: factor betas follow a random walk (`beta_t = beta_{t-1} + w_t`), so every
+  past observation contributes with exponentially decaying weight instead of a hard cutoff. The
+  process-noise covariance uses the discount-factor trick from Bayesian dynamic linear models
+  (West & Harrison, 1997): the posterior covariance is inflated by `1/(1-delta)` each step,
+  which turns `delta` into a single, scale-free tuning knob expressible as a half-life
+  (`half_life_days = ln(0.5)/ln(1-delta)`).
+
+**Calibrating delta**: the first default I tried (`1e-4`, implying a ~19-year half-life) made
+the filter essentially frozen — worse than useless for tracking anything. Sweeping delta and
+checking the reaction speed around a real, dateable event (FMAGX's momentum-factor loading
+around the Feb–Apr 2020 COVID crash) showed `delta=0.02` (~34-day half-life) gives a filter that
+visibly leads the 126-day rolling estimate down during the crash, without amplifying day-to-day
+noise. That sweep — not a formula — is what sets the default in `config.py`, and it's recorded
+there so the choice isn't a mystery constant.
+
+**Concrete finding**: for FMAGX's Momentum factor loading around March–April 2020, the Kalman
+estimate reaches roughly the post-crash level (~0.11–0.13) by late April, while the 126-day
+rolling estimate is still elevated (~0.15–0.17) at the same date — a real, measurable lag
+reduction, not just a smoother-looking line.
+
+```python
+from src.kalman_beta import rolling_ols_betas, kalman_filter_betas, compare_lag_around_date
+
+rolling = rolling_ols_betas(dataset.excess_returns, dataset.factor_returns, window=126)
+kalman = kalman_filter_betas(dataset.excess_returns, dataset.factor_returns)  # delta from config
+compare_lag_around_date(rolling, kalman, event_date=pd.Timestamp("2020-03-23"), factor="Mom")
+```
+
 ## Running locally
 
 ```bash
@@ -117,7 +155,7 @@ pytest
 
 1. ✅ Scaffold repo structure + config + data loader, verify data pulls correctly
 2. ✅ Static style analysis (constrained + unconstrained), validated against SPY
-3. Rolling OLS and Kalman filter time-varying betas, compared visually
+3. ✅ Rolling OLS and Kalman filter time-varying betas, compared visually
 4. HMM regime detection, validated against known stress periods
 5. Regime-conditional risk metrics
 6. Style drift score

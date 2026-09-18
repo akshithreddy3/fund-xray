@@ -77,11 +77,19 @@ ROLLING_WINDOWS: list[int] = [252, 126]  # ~1 trading year, ~6 trading months
 #   r_t    = x_t' beta_t + v_t,  v_t ~ N(0, R)
 # Q is set via the standard "discount factor" parameterization used in
 # adaptive/Bayesian regression (West & Harrison, "Bayesian Forecasting
-# and Dynamic Models"): Q = delta / (1 - delta) * P_{t-1}. A smaller
-# delta means slower-moving, smoother betas; delta -> 1 approaches an
-# unstable, highly reactive filter.
-KALMAN_DELTA = 1e-4
-KALMAN_OBSERVATION_COV_PRIOR = 1e-3  # prior on residual (idiosyncratic) variance
+# and Dynamic Models"): Q_t = delta / (1 - delta) * P_{t-1}, equivalent
+# to inflating the posterior covariance by 1/(1-delta) each step. This
+# makes delta's effect scale-free and expressible as a half-life:
+#   half_life_days = ln(0.5) / ln(1 - delta)
+# delta=0.02 -> ~34 trading days -- deliberately shorter than half of
+# either rolling window (63 / 126 days), so the filter's initial
+# reaction to a real shift is faster than the rolling baseline's,
+# which is the whole point of comparing the two. Empirically validated
+# on FMAGX's momentum-factor loading around the Feb-Apr 2020 COVID
+# crash: the Kalman estimate visibly leads the 126-day rolling estimate
+# down. delta -> 0 approaches a static (frozen) beta; delta -> 1
+# approaches an unstably reactive filter that mostly tracks noise.
+KALMAN_DELTA = 0.02
 
 # --------------------------------------------------------------------------
 # Regime detection

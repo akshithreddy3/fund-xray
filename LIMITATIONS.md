@@ -33,3 +33,29 @@ entry reflects a real caveat that surfaced while implementing that module.
   at all (there's no closed-form sampling distribution for a constrained-optimization estimator
   without bootstrapping, which this project doesn't implement) — its weights should be treated
   as point estimates only, not tested for statistical significance.
+
+## Time-varying exposure (`src/kalman_beta.py`)
+
+- **The Kalman filter assumes constant observation (idiosyncratic) variance R for the whole
+  sample**, estimated once from the warm-up window. A real fund's residual volatility is not
+  actually constant — it's typically higher during stress regimes (see Phase 4/5) — so the
+  filter's uncertainty band, and to a lesser extent its gain, is mis-specified precisely during
+  the periods most interesting to a risk analysis. A more complete model would let R vary too
+  (e.g. via a separate volatility filter or regime-conditional R), which this project doesn't
+  implement.
+- **`delta` (and therefore the filter's responsiveness) is set by one empirical sweep against
+  one event** (FMAGX's momentum beta around the 2020 COVID crash), not estimated by maximum
+  likelihood. A formal treatment would estimate `delta` (or Q directly) via MLE over the
+  state-space model's likelihood, which is possible with
+  `statsmodels.tsa.statespace.MLEModel` but adds meaningful implementation complexity; the
+  hand-picked default here is a reasonable, documented starting point, not a fitted parameter.
+  Users comparing a different fund should re-check the default against a known event for that
+  fund's return history rather than assuming `delta=0.02` transfers unchanged.
+- **The initial state (mean and covariance) is seeded from a single static OLS fit on the first
+  `warmup_window` observations**, and that warm-up period itself gets no beta estimate (logged,
+  not backfilled). A fund with an unusual first few months (e.g. a fund's actual inception
+  during an unusually volatile period) will get a less representative warm start than one with
+  a typical early period.
+- Rolling-window OLS and the Kalman filter are compared on the same beta series, but only
+  informally (visual/point-in-time lag comparison in the README, not a formal statistical test
+  of which estimator is "better" out-of-sample).
