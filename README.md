@@ -1,6 +1,6 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 1 of 10 complete (repo scaffold + data layer).** See Build Order below.
+**Status: Phase 2 of 10 complete (static style analysis).** See Build Order below.
 
 ## Problem statement
 
@@ -71,6 +71,39 @@ dataset.excess_returns    # fund_returns - risk_free
 dataset.factor_returns    # Mkt-RF, SMB, HML, RMW, CMA, Mom
 ```
 
+## Static style analysis (Phase 2 — done)
+
+`src/style_analysis.py` implements the same linear factor model two ways, so the disagreement
+between them is itself informative:
+
+- **Constrained ("Sharpe") style regression** — Sharpe (1992): factor loadings are solved via
+  `scipy.optimize` (SLSQP) subject to `beta_j >= 0` and `sum(beta_j) == 1`, no intercept. Note
+  that Sharpe's simplex constraint was designed for fully-invested, long-only asset-class
+  indices; applied here to the Fama-French/Carhart long-short factors it has no literal
+  portfolio-allocation meaning, so read the constrained weights as *relative factor tilts*, not
+  holdings. See [LIMITATIONS.md](LIMITATIONS.md).
+- **Unconstrained Fama-French OLS** — estimated with an intercept (alpha) and Newey-West (1987,
+  1994) HAC standard errors (automatic lag selection: `floor(4*(T/100)^(2/9))`), which corrects
+  for the serial correlation typical of daily return regressions.
+
+**Validation**: running constrained style analysis on `SPY` (2015–2024) loads 95.5% onto
+`Mkt-RF` with R² = 0.99 — exactly the sanity check a market-tracking ETF should pass.
+
+**Concrete finding**: on `FMAGX` (Fidelity Magellan, 2015–2024), the unconstrained regression
+finds a clearly negative HML loading (-0.16, a growth tilt) and negative SMB (-0.14, a
+large-cap tilt) — both real and economically sensible. The constrained model, unable to
+represent negative exposures, forces both to exactly 0 and instead over-loads onto Mkt-RF
+(0.97 vs. 1.04 unconstrained). This is precisely why both estimators are reported side by side:
+the simplex constraint doesn't just add noise, it can hide a fund's actual style tilts.
+
+```python
+from src.style_analysis import run_constrained_style_analysis, run_unconstrained_ols, compare_style_results
+
+constrained = run_constrained_style_analysis(dataset.excess_returns, dataset.factor_returns)
+unconstrained = run_unconstrained_ols(dataset.excess_returns, dataset.factor_returns)
+compare_style_results(constrained, unconstrained)  # side-by-side table, flags boundary weights
+```
+
 ## Running locally
 
 ```bash
@@ -83,7 +116,7 @@ pytest
 ## Build order
 
 1. ✅ Scaffold repo structure + config + data loader, verify data pulls correctly
-2. Static style analysis (constrained + unconstrained), validated against SPY
+2. ✅ Static style analysis (constrained + unconstrained), validated against SPY
 3. Rolling OLS and Kalman filter time-varying betas, compared visually
 4. HMM regime detection, validated against known stress periods
 5. Regime-conditional risk metrics
