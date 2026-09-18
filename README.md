@@ -1,6 +1,6 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 4 of 10 complete (HMM regime detection).** See Build Order below.
+**Status: Phase 5 of 10 complete (regime-conditional risk attribution).** See Build Order below.
 
 ## Problem statement
 
@@ -177,6 +177,43 @@ result.regime_probabilities   # smoothed posterior probability per regime
 validate_against_known_stress_periods(result)  # sanity-check table above
 ```
 
+## Regime-conditional risk attribution (Phase 5 — done)
+
+`src/risk_metrics.py` recomputes, within each Phase-4 regime (plus "overall" as a baseline):
+VaR(95%) and CVaR(95%) via **historical** (empirical-quantile) simulation rather than a
+parametric/Gaussian formula — a stress regime concentrates exactly the extreme days that make
+the normality assumption weakest, so a parametric VaR would understate tail risk in the regime
+where it matters most; factor betas and R² via the same unconstrained OLS as Phase 2, refit on
+only that regime's observations; and a per-factor **Euler variance decomposition**
+(`beta_j * (Sigma_f @ beta)_j`), which sums exactly to the factor-driven share of total variance
+(verified in tests), with the residual making up the idiosyncratic share.
+
+**Concrete finding**: FMAGX's regime-conditional profile (2017–2024, SPY/VIX-derived regimes)
+shows a large, real difference the whole-sample average hides —
+
+| | Calm | Stressed |
+|---|---|---|
+| Annualized volatility | 10.7% | 29.5% |
+| VaR (95%, daily) | 1.03% | 3.03% |
+| CVaR (95%, daily) | 1.48% | 4.31% |
+| R² | 90.3% | 98.2% |
+| Idiosyncratic variance share | 9.7% | 1.8% |
+| Mkt-RF beta | 1.04 | 1.04 |
+
+The market beta itself barely moves (1.04 in both regimes) — what changes is how much of the
+fund's *risk* is explained by that beta. In stress, idiosyncratic variance share collapses from
+9.7% to 1.8%: the classic "correlations go to 1 in a crisis" effect, and one a static,
+whole-sample style analysis would never surface.
+
+```python
+from src.risk_metrics import compute_regime_risk_metrics, regime_comparison_table
+
+metrics = compute_regime_risk_metrics(
+    dataset.fund_returns, dataset.excess_returns, dataset.factor_returns, regime_result.regime_labels
+)
+regime_comparison_table(metrics)  # one row per regime + "overall", side by side
+```
+
 ## Running locally
 
 ```bash
@@ -192,7 +229,7 @@ pytest
 2. ✅ Static style analysis (constrained + unconstrained), validated against SPY
 3. ✅ Rolling OLS and Kalman filter time-varying betas, compared visually
 4. ✅ HMM regime detection, validated against known stress periods
-5. Regime-conditional risk metrics
+5. ✅ Regime-conditional risk metrics
 6. Style drift score
 7. (Stretch) Crowding score
 8. Streamlit dashboard wiring all modules together

@@ -86,3 +86,22 @@ entry reflects a real caveat that surfaced while implementing that module.
   point-in-time analyst could have known on that date, and the pipeline as built is not
   suitable for real-time regime nowcasting without re-fitting only on data available up to
   each date.
+
+## Regime-conditional risk metrics (`src/risk_metrics.py`)
+
+- **Historical VaR/CVaR get noisier as a regime gets shorter.** The 95% confidence level means
+  the tail estimate is driven by roughly the worst 5% of observations in that regime; a
+  100-observation regime has only ~5 points defining its CVaR. `MIN_REGIME_OBS_WARNING` (20)
+  logs a warning below that count, but the numbers are still reported -- treat a short regime's
+  VaR/CVaR as directionally informative, not precise.
+  - The one-time SPY/VIX regime fit used for the README's FMAGX example split ~1,759
+    observations into two multi-hundred-day regimes, well above this threshold, but a
+    3-regime split or a shorter fund history could easily produce a thin "stressed" bucket.
+- **Regime exposures are refit independently per regime, with no shrinkage toward the
+  overall-sample estimate.** A short, noisy regime's betas can look more extreme than they
+  "really" are for exactly the small-sample reason above; a Bayesian or shrinkage estimator
+  would pull short-regime betas back toward the whole-sample fit, which this project doesn't do.
+- **The Euler variance decomposition is exact only in-sample for the same regime's own fitted
+  betas and factor covariance.** It correctly attributes *this* regime's variance to *this*
+  regime's factor loadings, but is not a forecast of how much each factor will contribute to
+  variance going forward if the regime persists or if betas drift within it.

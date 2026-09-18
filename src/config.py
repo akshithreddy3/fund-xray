@@ -123,6 +123,10 @@ KNOWN_STRESS_PERIODS: dict[str, tuple[date, date]] = {
 # --------------------------------------------------------------------------
 VAR_CONFIDENCE = 0.95
 CVAR_CONFIDENCE = 0.95
+# Below this many observations, a regime's risk/exposure estimates are
+# statistically fragile (a 7-parameter regression on <20 points is
+# nearly unidentified); we still compute them but log a warning.
+MIN_REGIME_OBS_WARNING = 20
 
 # --------------------------------------------------------------------------
 # Style drift
