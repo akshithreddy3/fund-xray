@@ -24,14 +24,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src import config
-from src.data_loader import DataLoader
+from src.data_loader import DataLoader, FundDataset
 from src.drift_score import (
+    CrowdingScoreResult,
     build_peer_exposure_vectors,
     compute_crowding_score,
     compute_style_drift,
 )
-from src.kalman_beta import kalman_filter_betas, rolling_ols_betas
+from src.kalman_beta import TimeVaryingBetaResult, kalman_filter_betas, rolling_ols_betas
 from src.regime_detection import (
+    RegimeDetectionResult,
     fit_regime_hmm,
     regime_episodes,
     validate_against_known_stress_periods,
@@ -56,12 +58,12 @@ def get_loader() -> DataLoader:
 
 
 @st.cache_data(show_spinner="Fetching fund and factor data...")
-def load_fund_dataset(ticker: str, start: date, end: date):
+def load_fund_dataset(ticker: str, start: date, end: date) -> FundDataset:
     return get_loader().build_fund_dataset(ticker, start, end)
 
 
 @st.cache_data(show_spinner="Fetching market regime inputs (SPY, VIX)...")
-def load_market_regime_inputs(start: date, end: date):
+def load_market_regime_inputs(start: date, end: date) -> tuple[pd.Series, pd.Series]:
     loader = get_loader()
     prices = loader.get_prices(config.REGIME_MARKET_PROXY, start, end)
     spy_returns = loader.to_log_returns(prices)[config.REGIME_MARKET_PROXY]
@@ -70,19 +72,23 @@ def load_market_regime_inputs(start: date, end: date):
 
 
 @st.cache_data(show_spinner="Fitting regime-detection HMM...")
-def compute_regimes(spy_returns: pd.Series, vix: pd.Series, n_regimes: int):
+def compute_regimes(spy_returns: pd.Series, vix: pd.Series, n_regimes: int) -> RegimeDetectionResult:
     return fit_regime_hmm(spy_returns, vix=vix, n_regimes=n_regimes)
 
 
 @st.cache_data(show_spinner="Fitting rolling-window and Kalman-filter betas...")
-def compute_time_varying_betas(excess_returns: pd.Series, factor_returns: pd.DataFrame, window: int):
+def compute_time_varying_betas(
+    excess_returns: pd.Series, factor_returns: pd.DataFrame, window: int
+) -> tuple[TimeVaryingBetaResult, TimeVaryingBetaResult]:
     rolling = rolling_ols_betas(excess_returns, factor_returns, window=window)
     kalman = kalman_filter_betas(excess_returns, factor_returns)
     return rolling, kalman
 
 
 @st.cache_data(show_spinner="Building peer exposure vectors for the crowding score...")
-def load_crowding_score(peer_tickers: tuple[str, ...], start: date, end: date, window: int):
+def load_crowding_score(
+    peer_tickers: tuple[str, ...], start: date, end: date, window: int
+) -> tuple[CrowdingScoreResult | None, list[str]]:
     loader = get_loader()
     peer_betas, skipped = build_peer_exposure_vectors(
         loader, list(peer_tickers), start, end, window=window

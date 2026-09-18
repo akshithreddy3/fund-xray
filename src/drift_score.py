@@ -45,6 +45,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from itertools import combinations
 
 import numpy as np
@@ -233,8 +234,8 @@ def average_pairwise_cosine_similarity(vectors: dict[str, np.ndarray]) -> float:
 def build_peer_exposure_vectors(
     loader: DataLoader,
     peer_tickers: list[str],
-    start,
-    end,
+    start: date | str,
+    end: date | str,
     window: int = min(config.ROLLING_WINDOWS),
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """Fetch each peer's dataset and fit rolling-OLS betas (Phase 3 machinery).
@@ -291,15 +292,15 @@ def compute_crowding_score(
 
     crowding_by_date: dict[pd.Timestamp, float] = {}
     n_peers_by_date: dict[pd.Timestamp, int] = {}
-    for date in all_dates:
+    for dt in all_dates:
         vectors = {
-            ticker: df.loc[date].to_numpy()
+            ticker: df.loc[dt].to_numpy()
             for ticker, df in cleaned.items()
-            if date in df.index and df.loc[date].notna().all()
+            if dt in df.index and df.loc[dt].notna().all()
         }
         if len(vectors) >= config.MIN_PEERS_FOR_CROWDING:
-            crowding_by_date[date] = average_pairwise_cosine_similarity(vectors)
-            n_peers_by_date[date] = len(vectors)
+            crowding_by_date[dt] = average_pairwise_cosine_similarity(vectors)
+            n_peers_by_date[dt] = len(vectors)
 
     if not crowding_by_date:
         raise ValueError(

@@ -18,6 +18,8 @@ list position at render time.
 
 from __future__ import annotations
 
+import plotly.graph_objects as go
+
 # Categorical palette, slots 1-8, fixed order (dataviz skill default).
 CATEGORICAL = {
     1: "#2a78d6",  # blue
@@ -89,7 +91,7 @@ AXIS_DEFAULTS = dict(
 )
 
 
-def apply_theme(fig):
+def apply_theme(fig: go.Figure) -> go.Figure:
     """Apply shared layout/axis defaults to a Plotly figure in place."""
     fig.update_layout(**PLOTLY_LAYOUT_DEFAULTS)
     fig.update_xaxes(**AXIS_DEFAULTS)

@@ -1,6 +1,7 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 8 of 10 complete (Streamlit dashboard).** See Build Order below.
+**Status: Phase 9 of 10 complete (methodology notebook, docs, and a final type/lint pass).**
+See Build Order below.
 
 ![Fund X-Ray dashboard — static exposures tab](docs/dashboard_screenshot.png)
 
@@ -298,6 +299,24 @@ under `data/cache/`, created on demand — this works unchanged on Streamlit Com
 ephemeral filesystem. Every data source (`yfinance`, the Kenneth French library) is free and
 unauthenticated, so `st.secrets` isn't needed at all.
 
+## Methodology notebook (Phase 9 — done)
+
+[`notebooks/01_methodology_walkthrough.ipynb`](notebooks/01_methodology_walkthrough.ipynb) is a
+single, executed, narrated run through every phase above on one real fund (`FMAGX`) — it exists
+to *validate* each modeling decision (SPY's near-100% `Mkt-RF` loading, the Kalman filter
+visibly leading the rolling window around the COVID crash, the regime model's agreement with
+known stress windows) rather than just demonstrate the code. Every number in it comes straight
+from `src/`, not from analysis duplicated in the notebook.
+
+It's built and executed by `scripts/build_notebook.py` rather than hand-edited, so the
+narrative text and the code it describes can't silently drift apart:
+
+```bash
+pip install -r requirements-dev.txt  # includes nbformat/nbclient/ipykernel
+python -m ipykernel install --user --name fundxray --display-name "Fund X-Ray (.venv)"
+python scripts/build_notebook.py
+```
+
 ## Running locally
 
 ```bash
@@ -319,7 +338,8 @@ streamlit run app.py  # launch the dashboard at localhost:8501
 6. ✅ Style drift score
 7. ✅ (Stretch) Crowding score
 8. ✅ Streamlit dashboard wiring all modules together
-9. README finding, LIMITATIONS.md, unit tests
+9. ✅ README finding, LIMITATIONS.md, unit tests (plus the methodology notebook and a final
+   type-hint/lint audit)
 10. Streamlit Cloud deployment
 
 ## Limitations
