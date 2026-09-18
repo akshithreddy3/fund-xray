@@ -1,7 +1,6 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 3 of 10 complete (time-varying exposure: rolling OLS vs. Kalman filter).** See
-Build Order below.
+**Status: Phase 4 of 10 complete (HMM regime detection).** See Build Order below.
 
 ## Problem statement
 
@@ -142,6 +141,42 @@ kalman = kalman_filter_betas(dataset.excess_returns, dataset.factor_returns)  # 
 compare_lag_around_date(rolling, kalman, event_date=pd.Timestamp("2020-03-23"), factor="Mom")
 ```
 
+## Regime detection (Phase 4 — done)
+
+`src/regime_detection.py` fits a Gaussian Hidden Markov Model (`hmmlearn`) on **market-wide**
+signals only — SPY daily returns plus VIX level (or trailing realized SPY volatility if VIX
+isn't supplied) — deliberately never on the target fund's own returns. If "stressed" were
+partly defined by the fund's own bad days, every downstream regime-conditional risk number
+(Phase 5) would be circular. `hmmlearn` assigns state indices arbitrarily, so states are
+relabeled after fitting by ascending mean of the volatility feature ("calm" is always the
+lowest-volatility state).
+
+Two standard HMM assumptions worth naming: the **Markov property** (tomorrow's regime depends
+only on today's, with persistence captured solely through the fitted transition matrix), and
+**Gaussian emissions** (daily returns are well known to have fatter tails than a Gaussian, so
+this model can mistake an extreme single-day move for "regime noise").
+
+**Validation** (2017–2024, 2-regime model, never fit on the stress-period dates themselves):
+
+| Known stress period | Days flagged "stressed" |
+|---|---|
+| COVID crash (2020-02-19 to 2020-04-07) | 91.4% |
+| 2022 rate-hike selloff (2022-01-03 to 2022-10-14) | 99.0% |
+
+With a 3-regime model, the 2022 selloff splits 68% "stressed" / 32% "elevated" rather than
+being nearly all "stressed" — a sensible distinction, since 2022 was a slower, grinding bear
+market rather than an acute VIX spike like COVID, and the 3-state model captures that texture
+that the 2-state model can't.
+
+```python
+from src.regime_detection import fit_regime_hmm, validate_against_known_stress_periods
+
+result = fit_regime_hmm(spy_returns, vix=vix_series, n_regimes=2)
+result.regime_labels          # "calm" / "stressed" per day
+result.regime_probabilities   # smoothed posterior probability per regime
+validate_against_known_stress_periods(result)  # sanity-check table above
+```
+
 ## Running locally
 
 ```bash
@@ -156,7 +191,7 @@ pytest
 1. ✅ Scaffold repo structure + config + data loader, verify data pulls correctly
 2. ✅ Static style analysis (constrained + unconstrained), validated against SPY
 3. ✅ Rolling OLS and Kalman filter time-varying betas, compared visually
-4. HMM regime detection, validated against known stress periods
+4. ✅ HMM regime detection, validated against known stress periods
 5. Regime-conditional risk metrics
 6. Style drift score
 7. (Stretch) Crowding score

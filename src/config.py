@@ -98,6 +98,17 @@ HMM_N_REGIMES_DEFAULT = 2
 HMM_N_REGIMES_OPTIONS: list[int] = [2, 3]
 HMM_RANDOM_STATE = 42
 HMM_N_ITER = 1000
+HMM_COVARIANCE_TYPE = "full"  # allow return/volatility features to covary within a regime
+
+# States are unordered by hmmlearn; we relabel them by ascending
+# volatility-feature mean so index 0 is always "calmest".
+HMM_REGIME_LABELS: dict[int, list[str]] = {
+    2: ["calm", "stressed"],
+    3: ["calm", "elevated", "stressed"],
+}
+# Rolling window for realized-volatility fallback when VIX isn't supplied
+# as a regime-detection feature (~1 trading month).
+REALIZED_VOL_WINDOW = 21
 
 # Known stress windows used ONLY to sanity-check HMM regime labels after
 # fitting -- never as training input. Using them as a fitting target

@@ -8,3 +8,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # hmmlearn internals, not our code; harmless on numpy>=2.5.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning:hmmlearn",
+]

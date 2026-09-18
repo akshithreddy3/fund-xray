@@ -59,3 +59,30 @@ entry reflects a real caveat that surfaced while implementing that module.
 - Rolling-window OLS and the Kalman filter are compared on the same beta series, but only
   informally (visual/point-in-time lag comparison in the README, not a formal statistical test
   of which estimator is "better" out-of-sample).
+
+## Regime detection (`src/regime_detection.py`)
+
+- **The HMM assumes Gaussian, state-conditional-i.i.d. emissions.** Daily equity returns have
+  fatter tails than a Gaussian, so a single extreme day can be absorbed as "regime noise"
+  rather than triggering (or ending) a regime transition, and the model has no way to represent
+  that mismatch.
+- **The Markov property means regime persistence is entirely a function of the fitted
+  transition matrix's self-transition probabilities** — there's no explicit "minimum regime
+  duration" or richer memory of how long a regime has already lasted. In practice this can
+  produce brief, single-day flickers between labels around a regime boundary, which a human
+  reading the same chart might smooth over.
+- **Regime *count* is a modeling choice, not something estimated from the data.** The 2- vs.
+  3-regime comparison above shows this concretely: the 2022 selloff is called "stressed" 99% of
+  the time in a 2-state model but splits into distinct "elevated"/"stressed" phases in a
+  3-state model — neither is more "correct"; they're different resolutions of the same
+  underlying volatility path. Selecting `n_regimes` by, e.g., BIC would give a formal answer
+  but was not implemented here in favor of letting the user choose and compare (Streamlit
+  sidebar `n_regimes` control).
+- **Regimes are fit once over the full available history and are not truly point-in-time.**
+  Because `model.fit()` sees the whole sample at once, a day early in the sample is labeled
+  using information about volatility regimes that hadn't happened yet from that day's
+  perspective. This is standard practice for *retrospective* regime characterization (which is
+  what this project does), but it means the regime labels should not be read as what a
+  point-in-time analyst could have known on that date, and the pipeline as built is not
+  suitable for real-time regime nowcasting without re-fitting only on data available up to
+  each date.
