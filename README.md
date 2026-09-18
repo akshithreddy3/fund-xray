@@ -1,6 +1,6 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 5 of 10 complete (regime-conditional risk attribution).** See Build Order below.
+**Status: Phase 6 of 10 complete (Style Drift Score).** See Build Order below.
 
 ## Problem statement
 
@@ -214,6 +214,34 @@ metrics = compute_regime_risk_metrics(
 regime_comparison_table(metrics)  # one row per regime + "overall", side by side
 ```
 
+## Style Drift Score (Phase 6 — done)
+
+`src/drift_score.py` reduces each date's factor-exposure vector (from Phase 3's rolling or
+Kalman betas — `const`/alpha is excluded, since it isn't a style exposure) to a single distance
+from a baseline vector: either the fund's own exposure averaged over its first 12 months
+(default), or a user-supplied stated-mandate vector. Two metrics are offered because they answer
+different questions — **cosine distance** measures a change in exposure *shape* independent of
+magnitude; **Euclidean distance** captures magnitude changes too. A drift event is flagged when
+the score exceeds `baseline-period mean + 2·std`, calibrated to each fund's *own* baseline-period
+noise rather than one universal cutoff.
+
+**Concrete finding**: FMAGX's 126-day-rolling exposure vector shows brief, few-day drift blips
+in 2015–2016 that fade back below threshold, then a sustained, permanent divergence starting in
+2016–2019 that never reverts. Comparing the peak (2023-01-03) to the 2015 baseline: RMW flips
+from -0.14 to +0.18 (weak- to robust-profitability tilt), CMA moves from -0.22 to +0.03 (less
+aggressive-investment tilt), and HML moves further negative (-0.001 to -0.35, a stronger
+growth/anti-value tilt) — a real, multi-factor style evolution over the fund's history, not
+sampling noise.
+
+```python
+from src.drift_score import compute_style_drift
+
+drift = compute_style_drift(rolling_result.betas, metric="cosine")  # or kalman_result.betas
+drift.drift            # time series of distance-from-baseline
+drift.threshold        # baseline mean + 2*std
+drift.flagged_events   # contiguous episodes above threshold: start/end/peak_date/peak_drift
+```
+
 ## Running locally
 
 ```bash
@@ -230,7 +258,7 @@ pytest
 3. ✅ Rolling OLS and Kalman filter time-varying betas, compared visually
 4. ✅ HMM regime detection, validated against known stress periods
 5. ✅ Regime-conditional risk metrics
-6. Style drift score
+6. ✅ Style drift score
 7. (Stretch) Crowding score
 8. Streamlit dashboard wiring all modules together
 9. README finding, LIMITATIONS.md, unit tests

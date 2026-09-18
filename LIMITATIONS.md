@@ -105,3 +105,28 @@ entry reflects a real caveat that surfaced while implementing that module.
   betas and factor covariance.** It correctly attributes *this* regime's variance to *this*
   regime's factor loadings, but is not a forecast of how much each factor will contribute to
   variance going forward if the regime persists or if betas drift within it.
+
+## Style Drift Score (`src/drift_score.py`)
+
+- **A fixed baseline can't distinguish a permanent style evolution from a fund that will
+  eventually revert.** With the default first-12-months baseline, a real, permanent shift in a
+  fund's factor exposure (a genuine change in strategy or management) shows up identically to a
+  fund the drift score just hasn't seen return to normal yet — the flagged-episode structure
+  works well for short blips, but on FMAGX's real history it produces one continuous flagged
+  episode spanning multiple years once the exposure permanently diverges. Read a long flagged
+  episode as "still different from the baseline period," not as an ongoing anomaly the fund is
+  expected to correct.
+- **The baseline window itself can be unrepresentative.** If a fund's first `n_months` happen to
+  fall in an unusual period for that fund (e.g. a manager transition, or a fund's early history
+  before it reached scale), every later date's drift is measured against that atypical starting
+  point. A user-supplied mandate vector sidesteps this by anchoring to a stated target instead
+  of the fund's own possibly-unusual early history.
+- **Cosine and Euclidean distance can disagree**, and this module doesn't tell you which is
+  "right" for a given question — a fund that scales all its exposures up proportionally (e.g.
+  adds leverage without changing its factor mix) shows large Euclidean drift but near-zero
+  cosine drift. Check both if the two questions ("has the shape changed?" vs. "has the
+  magnitude changed?") both matter for the fund in question.
+- **The drift score inherits whichever estimator (rolling-OLS or Kalman) produced its input
+  betas**, including that estimator's own burn-in period (dropped, not backfilled, consistent
+  with the rest of this project) and, for the Kalman filter, its constant-observation-variance
+  assumption (documented above).
