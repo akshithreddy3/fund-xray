@@ -1,7 +1,7 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 9 of 10 complete (methodology notebook, docs, and a final type/lint pass).**
-See Build Order below.
+**Status: all 10 build phases complete; deployment-ready (not yet deployed — see Deployment
+below for what that requires).** See Build Order below.
 
 ![Fund X-Ray dashboard — static exposures tab](docs/dashboard_screenshot.png)
 
@@ -328,6 +328,40 @@ pytest              # run the test suite
 streamlit run app.py  # launch the dashboard at localhost:8501
 ```
 
+## Deployment (Phase 10 — deployment-ready)
+
+**Live dashboard**: _not yet deployed — this repo is deployment-ready; deploying it requires a
+GitHub remote and a Streamlit Community Cloud account, which are the user's, not something this
+assistant has access to. See below for the exact steps._
+
+`requirements.txt` holds only what `app.py` actually imports (verified by installing it alone,
+with no dev dependencies, into a throwaway virtualenv and confirming the app boots against a
+cold — empty — parquet cache before this phase was called done). Two packages that snuck into
+earlier phases' `requirements.txt` were removed once nothing in `src/`/`app.py` turned out to
+import them: `pykalman` (the Kalman filter is hand-rolled in `src/kalman_beta.py` — see that
+module's docstring for why) and `scikit-learn` (never used). `matplotlib` moved to
+`requirements-dev.txt` since only the notebook needs it, not the dashboard.
+
+To deploy on [Streamlit Community Cloud](https://share.streamlit.io):
+
+1. Push this repo to a GitHub repository (public, or private if your Streamlit Cloud plan
+   supports it).
+2. At [share.streamlit.io](https://share.streamlit.io), "New app" → pick the repo/branch → set
+   **Main file path** to `app.py`.
+3. Under "Advanced settings," Python version should pick up `.python-version` (`3.12`)
+   automatically; set it explicitly there if it doesn't.
+4. No secrets to configure — every data source (`yfinance`, the Kenneth French library) is free
+   and unauthenticated, so `st.secrets` is unused.
+5. Deploy. Once live, replace the placeholder above with the app's `*.streamlit.app` URL.
+
+**Known cold-start characteristic**: the first load after a deploy (or after Streamlit Cloud's
+container sleeps from inactivity) fetches the default fund, SPY, VIX, and all 4 default peer
+tickers, then fits the HMM and both time-varying-beta estimators — all five tabs' data, since
+Streamlit re-runs the whole script on every load regardless of which tab is visually active.
+Measured locally against a cold cache: ~25-30 seconds. Every subsequent interaction (switching
+tabs, moving a slider) is fast, since `st.cache_data`/`st.cache_resource` mean only a changed
+input triggers real work again.
+
 ## Build order
 
 1. ✅ Scaffold repo structure + config + data loader, verify data pulls correctly
@@ -340,8 +374,12 @@ streamlit run app.py  # launch the dashboard at localhost:8501
 8. ✅ Streamlit dashboard wiring all modules together
 9. ✅ README finding, LIMITATIONS.md, unit tests (plus the methodology notebook and a final
    type-hint/lint audit)
-10. Streamlit Cloud deployment
+10. ✅ Prepare for Streamlit Cloud deployment (trimmed `requirements.txt`, verified a cold-cache
+    boot in a dependencies-only virtualenv, added `.python-version`); actual deploy + live URL
+    is the user's step, not something done from here — see **Deployment** above.
 
 ## Limitations
 
-See [LIMITATIONS.md](LIMITATIONS.md) (added once the modeling phases land).
+See [LIMITATIONS.md](LIMITATIONS.md) — covers what returns-based style analysis assumes, HMM
+regime-count sensitivity, and what none of these methods can detect (intra-period trading,
+hedges, or leverage changes that unwind before the return series is observed).
