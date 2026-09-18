@@ -1,6 +1,6 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 6 of 10 complete (Style Drift Score).** See Build Order below.
+**Status: Phase 7 of 10 complete (Crowding Score, stretch goal).** See Build Order below.
 
 ## Problem statement
 
@@ -242,6 +242,33 @@ drift.threshold        # baseline mean + 2*std
 drift.flagged_events   # contiguous episodes above threshold: start/end/peak_date/peak_drift
 ```
 
+## Crowding Score (Phase 7 — stretch goal, done)
+
+Also in `src/drift_score.py`: for a peer group of tickers, `build_peer_exposure_vectors()` fits
+the same rolling-OLS betas from Phase 3 to each peer independently, and `compute_crowding_score()`
+averages pairwise cosine *similarity* (not distance — 1.0 means every peer's exposure vector
+points the same direction) across all peer pairs at each date. Peers are allowed ragged
+histories (different inception dates, different rolling-window burn-ins): each date's score
+uses whichever peers have valid data that day, and `n_peers_used` reports how many, so a score
+built from 2 peers is never mistaken for one built from the whole group. A peer ticker that
+fails to fetch (bad/delisted) is skipped and logged, not allowed to fail the whole calculation.
+
+**Concrete finding**: the default peer group (`FCNTX`, `AGTHX`, `ANCFX`, `VUG` — all large-cap
+growth funds/ETFs) shows persistently high average pairwise cosine similarity (2015–2024: mean
+0.95, range 0.90–0.97) — genuinely overlapping, crowded positioning across the whole period,
+not just during any one stretch. It ticks up modestly during the COVID window (mean 0.963 vs.
+0.957 over a 2015–2016 baseline period) — a small effect, but directionally consistent with the
+"correlations rise in stress" pattern already seen in Phase 5's regime-conditional risk metrics.
+
+```python
+from src.drift_score import build_peer_exposure_vectors, compute_crowding_score
+
+peer_betas, skipped = build_peer_exposure_vectors(loader, config.DEFAULT_PEER_GROUP, start, end)
+crowding = compute_crowding_score(peer_betas, skipped_tickers=skipped)
+crowding.crowding        # time series of average pairwise cosine similarity
+crowding.n_peers_used    # how many peers contributed to each date's score
+```
+
 ## Running locally
 
 ```bash
@@ -259,7 +286,7 @@ pytest
 4. ✅ HMM regime detection, validated against known stress periods
 5. ✅ Regime-conditional risk metrics
 6. ✅ Style drift score
-7. (Stretch) Crowding score
+7. ✅ (Stretch) Crowding score
 8. Streamlit dashboard wiring all modules together
 9. README finding, LIMITATIONS.md, unit tests
 10. Streamlit Cloud deployment

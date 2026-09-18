@@ -28,6 +28,16 @@ threshold calibrated to how much this specific fund's exposure moved
 around *during its own baseline period* -- not a single universal
 cutoff, which would treat a fund with a naturally noisy baseline the
 same as one with a very stable one.
+
+This module also computes the **Crowding Score** (Phase 7, stretch
+goal): for a peer group of tickers, each peer's own time-varying
+exposure vector (same Phase-3 rolling-OLS machinery, one fit per
+ticker) is compared pairwise via cosine similarity, averaged across
+all pairs at each date. A high, rising average pairwise similarity
+means the peer group's managers are converging on the same factor
+tilts -- "crowded" positioning that, if it unwinds, tends to unwind for
+everyone in the group at once (a risk no single fund's own numbers can
+reveal).
 """
 
 from __future__ import annotations
@@ -35,11 +45,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import combinations
 
 import numpy as np
 import pandas as pd
 
 from src import config
+from src.data_loader import DataLoader
+from src.kalman_beta import rolling_ols_betas
 
 logger = logging.getLogger(__name__)
 
@@ -189,4 +202,124 @@ def compute_style_drift(
         metric=metric,
         threshold=threshold,
         flagged_events=flagged_events,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Crowding score (Phase 7, stretch goal)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CrowdingScoreResult:
+    crowding: pd.Series  # index=date, value=average pairwise cosine similarity
+    n_peers_used: pd.Series  # index=date, value=how many peers had valid data that day
+    peer_tickers: list[str]  # peers actually used (after dropping fetch/data failures)
+    skipped_tickers: list[str]  # peers requested but excluded, and why (logged)
+
+
+def average_pairwise_cosine_similarity(vectors: dict[str, np.ndarray]) -> float:
+    """Mean cosine similarity (not distance) over every unordered peer pair.
+
+    Similarity, not distance, is the natural unit for "crowding": 1.0
+    means every peer's exposure vector points the same direction
+    (maximally crowded), 0 means orthogonal/unrelated tilts.
+    """
+    pairs = list(combinations(vectors.keys(), 2))
+    similarities = [1.0 - cosine_distance(vectors[a], vectors[b]) for a, b in pairs]
+    return float(np.mean(similarities))
+
+
+def build_peer_exposure_vectors(
+    loader: DataLoader,
+    peer_tickers: list[str],
+    start,
+    end,
+    window: int = min(config.ROLLING_WINDOWS),
+) -> tuple[dict[str, pd.DataFrame], list[str]]:
+    """Fetch each peer's dataset and fit rolling-OLS betas (Phase 3 machinery).
+
+    A peer that fails to fetch (bad/delisted ticker, no overlapping factor
+    history, etc.) is skipped -- logged explicitly, not silently dropped --
+    rather than failing the whole crowding calculation.
+    """
+    peer_betas: dict[str, pd.DataFrame] = {}
+    skipped: list[str] = []
+    for ticker in peer_tickers:
+        try:
+            dataset = loader.build_fund_dataset(ticker, start, end)
+            result = rolling_ols_betas(dataset.excess_returns, dataset.factor_returns, window=window)
+        except (ValueError, KeyError) as exc:
+            logger.warning("Skipping peer '%s' from crowding score: %s", ticker, exc)
+            skipped.append(ticker)
+            continue
+        peer_betas[ticker] = result.betas
+    return peer_betas, skipped
+
+
+def compute_crowding_score(
+    peer_betas: dict[str, pd.DataFrame],
+    skipped_tickers: list[str] | None = None,
+) -> CrowdingScoreResult:
+    """Average pairwise cosine similarity of peer exposure vectors, per date.
+
+    Peers are allowed to have ragged histories (different inception
+    dates, different rolling-window burn-ins): each date's score is
+    computed from whichever peers have a valid (non-NaN) exposure
+    vector that day, provided at least `config.MIN_PEERS_FOR_CROWDING`
+    do. `n_peers_used` reports how many contributed to each date so a
+    score based on 2 peers isn't mistaken for one based on the whole
+    group.
+    """
+    if len(peer_betas) < config.MIN_PEERS_FOR_CROWDING:
+        raise ValueError(
+            f"Need at least {config.MIN_PEERS_FOR_CROWDING} peers with data, "
+            f"got {len(peer_betas)}."
+        )
+
+    cleaned: dict[str, pd.DataFrame] = {}
+    factor_cols: list[str] | None = None
+    for ticker, betas in peer_betas.items():
+        cols = _factor_columns(betas)
+        if factor_cols is None:
+            factor_cols = cols
+        elif cols != factor_cols:
+            raise ValueError(f"Factor columns mismatch for peer '{ticker}': {cols} vs {factor_cols}")
+        cleaned[ticker] = betas[cols]
+
+    all_dates = sorted(set().union(*(df.dropna(how="any").index for df in cleaned.values())))
+
+    crowding_by_date: dict[pd.Timestamp, float] = {}
+    n_peers_by_date: dict[pd.Timestamp, int] = {}
+    for date in all_dates:
+        vectors = {
+            ticker: df.loc[date].to_numpy()
+            for ticker, df in cleaned.items()
+            if date in df.index and df.loc[date].notna().all()
+        }
+        if len(vectors) >= config.MIN_PEERS_FOR_CROWDING:
+            crowding_by_date[date] = average_pairwise_cosine_similarity(vectors)
+            n_peers_by_date[date] = len(vectors)
+
+    if not crowding_by_date:
+        raise ValueError(
+            "No date has at least "
+            f"{config.MIN_PEERS_FOR_CROWDING} peers with overlapping, valid exposure data."
+        )
+
+    crowding = pd.Series(crowding_by_date, name="crowding").sort_index()
+    n_peers_used = pd.Series(n_peers_by_date, name="n_peers_used").sort_index()
+
+    logger.info(
+        "Crowding score computed over %d dates for %d peers (median peers/date: %.0f).",
+        len(crowding),
+        len(cleaned),
+        n_peers_used.median(),
+    )
+
+    return CrowdingScoreResult(
+        crowding=crowding,
+        n_peers_used=n_peers_used,
+        peer_tickers=list(cleaned.keys()),
+        skipped_tickers=list(skipped_tickers) if skipped_tickers else [],
     )

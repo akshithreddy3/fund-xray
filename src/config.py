@@ -140,6 +140,13 @@ STYLE_DRIFT_BASELINE_MONTHS = 12
 # instead of assuming one universal threshold fits every mandate.
 STYLE_DRIFT_THRESHOLD_STD = 2.0
 
+# --------------------------------------------------------------------------
+# Crowding score
+# --------------------------------------------------------------------------
+# Pairwise cosine similarity needs at least 2 peer exposure vectors on a
+# given date; below that a "crowding" figure is undefined, not just noisy.
+MIN_PEERS_FOR_CROWDING = 2
+
 
 @dataclass
 class AppSettings:

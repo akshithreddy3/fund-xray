@@ -130,3 +130,26 @@ entry reflects a real caveat that surfaced while implementing that module.
   betas**, including that estimator's own burn-in period (dropped, not backfilled, consistent
   with the rest of this project) and, for the Kalman filter, its constant-observation-variance
   assumption (documented above).
+
+## Crowding Score (`src/drift_score.py`)
+
+- **The peer group is a hand-picked, hardcoded list (`config.DEFAULT_PEER_GROUP`), not
+  discovered from the data.** Whether the crowding score is meaningful depends entirely on
+  whether the chosen peers actually compete for similar capital/positioning; the default
+  four-ticker large-cap-growth group is a plausible example, not a validated category
+  definition, and a user pointing this at a mismatched peer group (e.g. mixing large-cap growth
+  with small-cap value) will get a low similarity score that reflects the mismatch, not real
+  "un-crowding."
+- **Rolling-OLS-only, not Kalman.** `build_peer_exposure_vectors` always uses the Phase-3
+  rolling-window estimator, not the Kalman filter, purely to keep the multi-ticker fetch-and-fit
+  loop simple; nothing prevents swapping in Kalman betas per peer, but as built the crowding
+  score inherits rolling OLS's lag/ghosting characteristics (documented above) for every peer.
+- **A single average number hides dispersion.** Two peer groups with the same average pairwise
+  similarity can have very different structures -- e.g. three peers nearly identical plus one
+  outlier, vs. four peers all moderately similar to each other. The averaged crowding score
+  doesn't distinguish these; a full pairwise similarity matrix (not currently exposed as a
+  separate output) would be needed to see that structure.
+- **A peer with too little overlapping history contributes nothing rather than being
+  down-weighted.** `n_peers_used` reports this explicitly, but the crowding score itself treats
+  a date backed by 2 peers identically in kind to one backed by 6 -- it doesn't reflect the
+  lower reliability of a thinner sample.
