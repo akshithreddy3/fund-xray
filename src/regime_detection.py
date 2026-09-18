@@ -71,13 +71,15 @@ def build_regime_features(
     rather than filled where a feature is missing.
     """
     if vix is not None:
-        features = pd.concat({"return": market_returns, "vol_signal": vix}, axis=1)
+        features = pd.concat({"return": market_returns, "vol_signal": vix}, axis=1, sort=False)
         vol_source = "vix"
     else:
         realized_vol = market_returns.rolling(realized_vol_window).std() * np.sqrt(
             config.TRADING_DAYS_PER_YEAR
         )
-        features = pd.concat({"return": market_returns, "vol_signal": realized_vol}, axis=1)
+        features = pd.concat(
+            {"return": market_returns, "vol_signal": realized_vol}, axis=1, sort=False
+        )
         vol_source = "realized_vol"
 
     n_before = len(features)
@@ -207,3 +209,23 @@ def validate_against_known_stress_periods(
             }
         )
     return pd.DataFrame(rows).set_index("period")
+
+
+def regime_episodes(regime_labels: pd.Series) -> pd.DataFrame:
+    """Collapse a per-day regime label series into contiguous episodes.
+
+    Used for regime-shaded charts (shading one rectangle per episode
+    reads far better than one mark per day) and for at-a-glance
+    inspection of how persistent each regime actually was.
+    """
+    group_id = (regime_labels != regime_labels.shift()).cumsum()
+    episodes = [
+        {
+            "label": group.iloc[0],
+            "start": group.index.min(),
+            "end": group.index.max(),
+            "n_days": len(group),
+        }
+        for _, group in regime_labels.groupby(group_id)
+    ]
+    return pd.DataFrame(episodes)

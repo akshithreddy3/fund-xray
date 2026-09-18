@@ -16,6 +16,7 @@ import pytest
 from src.regime_detection import (
     build_regime_features,
     fit_regime_hmm,
+    regime_episodes,
     validate_against_known_stress_periods,
 )
 
@@ -95,6 +96,23 @@ def test_invalid_n_regimes_raises():
     market_returns, vix, _, _ = _make_two_regime_market_data()
     with pytest.raises(ValueError):
         fit_regime_hmm(market_returns, vix=vix, n_regimes=5)
+
+
+def test_regime_episodes_collapses_contiguous_runs():
+    dates = pd.date_range("2020-01-01", periods=10, freq="D")
+    labels = pd.Series(
+        ["calm", "calm", "calm", "stressed", "stressed", "calm", "calm", "calm", "calm", "calm"],
+        index=dates,
+    )
+    episodes = regime_episodes(labels)
+
+    assert len(episodes) == 3
+    assert list(episodes["label"]) == ["calm", "stressed", "calm"]
+    assert list(episodes["n_days"]) == [3, 2, 5]
+    assert episodes.iloc[0]["start"] == dates[0]
+    assert episodes.iloc[0]["end"] == dates[2]
+    assert episodes.iloc[1]["start"] == dates[3]
+    assert episodes.iloc[1]["end"] == dates[4]
 
 
 def test_validate_against_known_stress_periods_matches_synthetic_blocks():

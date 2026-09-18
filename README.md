@@ -1,6 +1,8 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: Phase 7 of 10 complete (Crowding Score, stretch goal).** See Build Order below.
+**Status: Phase 8 of 10 complete (Streamlit dashboard).** See Build Order below.
+
+![Fund X-Ray dashboard — static exposures tab](docs/dashboard_screenshot.png)
 
 ## Problem statement
 
@@ -10,6 +12,13 @@ single backtest can: what does this fund's risk actually look like *during a str
 as opposed to on average? This project builds that returns-based analysis pipeline end to end
 — constrained style analysis, Kalman-filtered time-varying betas, HMM regime detection, and a
 style-drift score — as a Streamlit dashboard.
+
+**Key finding** (FMAGX, 2010–2026, SPY/VIX-derived regimes): idiosyncratic variance share
+collapses from ~10% in calm markets to under 2% in stressed ones, while `Mkt-RF` beta barely
+moves (~1.04 in both) — the fund's *market* exposure is stable, but its *diversification*
+quietly disappears exactly when it matters most. A whole-sample static style analysis, run
+alone, would never surface this; see the [regime-conditional risk metrics](#regime-conditional-risk-attribution-phase-5--done)
+section below for the full table.
 
 ## Methodology (summary; full detail added as each phase lands)
 
@@ -38,8 +47,10 @@ src/
   regime_detection.py    # HMM regime labeling (Phase 4)
   risk_metrics.py         # regime-conditional VaR/CVaR/R^2 (Phase 5)
   drift_score.py          # style drift + crowding score (Phase 6/7)
+  viz_theme.py             # shared Plotly color/layout theme for app.py (Phase 8)
 tests/                    # unit tests per module
 notebooks/                # 01_methodology_walkthrough.ipynb (narrated validation)
+docs/                     # README screenshot
 app.py                    # Streamlit dashboard (Phase 8)
 ```
 
@@ -269,13 +280,33 @@ crowding.crowding        # time series of average pairwise cosine similarity
 crowding.n_peers_used    # how many peers contributed to each date's score
 ```
 
+## Streamlit dashboard (Phase 8 — done)
+
+`app.py` wires every module above behind one sidebar (ticker, date range, rolling window,
+regime count, peer group) into five tabs: **Static Exposures** (Phase 2's comparison chart and
+table), **Time-Varying Exposures** (Phase 3's rolling-vs-Kalman overlay, toggleable per factor),
+**Regime View** (Phase 4's regime-shaded price chart plus Phase 5's risk-metrics table and
+stress-period validation), **Style Drift** (Phase 6's drift chart with threshold and flagged
+episodes), and **Crowding Score** (Phase 7). All charts use a fixed, accessibility-validated
+color palette (`src/viz_theme.py`) where each factor and each regime label keeps the same color
+across every tab, and every network call / model fit is wrapped in `st.cache_data` /
+`st.cache_resource` so Streamlit's rerun-on-every-interaction model doesn't re-fetch or re-fit
+unless an actual input changed.
+
+**No local-only paths, no secrets required**: `DataLoader`'s parquet cache is a relative path
+under `data/cache/`, created on demand — this works unchanged on Streamlit Community Cloud's
+ephemeral filesystem. Every data source (`yfinance`, the Kenneth French library) is free and
+unauthenticated, so `st.secrets` isn't needed at all.
+
 ## Running locally
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest
+
+pytest              # run the test suite
+streamlit run app.py  # launch the dashboard at localhost:8501
 ```
 
 ## Build order
@@ -287,7 +318,7 @@ pytest
 5. ✅ Regime-conditional risk metrics
 6. ✅ Style drift score
 7. ✅ (Stretch) Crowding score
-8. Streamlit dashboard wiring all modules together
+8. ✅ Streamlit dashboard wiring all modules together
 9. README finding, LIMITATIONS.md, unit tests
 10. Streamlit Cloud deployment
 
