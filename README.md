@@ -1,7 +1,7 @@
 # Fund X-Ray — Returns-Based Style Analysis & Regime-Conditional Risk Attribution
 
-**Status: all 10 build phases complete; deployment-ready (not yet deployed — see Deployment
-below for what that requires).** See Build Order below.
+**Status: all 10 build phases complete; deployed on Streamlit Community Cloud** (see
+[Deployment](#deployment-phase-10--deployment-ready) below).
 
 ![Fund X-Ray dashboard — static exposures tab](docs/dashboard_screenshot.png)
 
@@ -330,9 +330,9 @@ streamlit run app.py  # launch the dashboard at localhost:8501
 
 ## Deployment (Phase 10 — deployment-ready)
 
-**Live dashboard**: _not yet deployed — this repo is deployment-ready; deploying it requires a
-GitHub remote and a Streamlit Community Cloud account, which are the user's, not something this
-assistant has access to. See below for the exact steps._
+**Live dashboard**: [fund-xray-aduyuzapdmiwtghrcdxrus.streamlit.app](https://fund-xray-aduyuzapdmiwtghrcdxrus.streamlit.app)
+
+Deployed on Streamlit Community Cloud from `main`. The steps below reproduce that deploy.
 
 `requirements.txt` holds only what `app.py` actually imports (verified by installing it alone,
 with no dev dependencies, into a throwaway virtualenv and confirming the app boots against a
@@ -352,7 +352,8 @@ To deploy on [Streamlit Community Cloud](https://share.streamlit.io):
    automatically; set it explicitly there if it doesn't.
 4. No secrets to configure — every data source (`yfinance`, the Kenneth French library) is free
    and unauthenticated, so `st.secrets` is unused.
-5. Deploy. Once live, replace the placeholder above with the app's `*.streamlit.app` URL.
+5. Deploy, and make sure the app's sharing setting is **public** if you want others to open it
+   without signing in.
 
 **Known cold-start characteristic**: the first load after a deploy (or after Streamlit Cloud's
 container sleeps from inactivity) fetches the default fund, SPY, VIX, and all 4 default peer
@@ -374,9 +375,8 @@ input triggers real work again.
 8. ✅ Streamlit dashboard wiring all modules together
 9. ✅ README finding, LIMITATIONS.md, unit tests (plus the methodology notebook and a final
    type-hint/lint audit)
-10. ✅ Prepare for Streamlit Cloud deployment (trimmed `requirements.txt`, verified a cold-cache
-    boot in a dependencies-only virtualenv, added `.python-version`); actual deploy + live URL
-    is the user's step, not something done from here — see **Deployment** above.
+10. ✅ Streamlit Cloud deployment (trimmed `requirements.txt`, verified a cold-cache boot in a
+    dependencies-only virtualenv, added `.python-version`, deployed) — see **Deployment** above.
 
 ## Limitations
 
