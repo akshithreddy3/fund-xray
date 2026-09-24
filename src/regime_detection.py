@@ -34,7 +34,9 @@ ascending mean of the volatility feature after fitting.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import combinations
 
 import numpy as np
 import pandas as pd
@@ -209,6 +211,79 @@ def validate_against_known_stress_periods(
             }
         )
     return pd.DataFrame(rows).set_index("period")
+
+
+def regime_stability_across_seeds(
+    market_returns: pd.Series,
+    vix: pd.Series | None,
+    n_regimes: int = config.HMM_N_REGIMES_DEFAULT,
+    seeds: Sequence[int] = (1, 2, 3, 4, 5),
+) -> float:
+    """Average pairwise day-label agreement across independent HMM refits.
+
+    The single fixed `HMM_RANDOM_STATE` used elsewhere gives a
+    reproducible regime split, but reproducible isn't the same as
+    *stable* -- the EM algorithm can converge to different local optima
+    from different random initializations. Regime labels are already
+    relabeled by ascending volatility-feature mean (see `fit_regime_hmm`),
+    so agreement can be checked directly by label name across seeds
+    without a separate label-matching step. Low agreement means the
+    calm/stressed split is sensitive to initialization, not a robust
+    property of the data.
+    """
+    fits = [
+        fit_regime_hmm(market_returns, vix=vix, n_regimes=n_regimes, random_state=seed)
+        for seed in seeds
+    ]
+    label_series = [f.regime_labels for f in fits]
+
+    agreements = []
+    for a, b in combinations(label_series, 2):
+        aligned_a, aligned_b = a.align(b, join="inner")
+        if len(aligned_a) == 0:
+            continue
+        agreements.append(float((aligned_a == aligned_b).mean()))
+
+    return float(np.mean(agreements)) if agreements else float("nan")
+
+
+def rule_based_regime_labels(
+    vol_signal: pd.Series,
+    threshold_percentile: float = 80.0,
+    calm_label: str = "calm",
+    stress_label: str = "stressed",
+) -> pd.Series:
+    """Transparent, non-model-based regime baseline: 'stressed' whenever
+    the volatility signal (VIX level, or realized vol -- whichever
+    `build_regime_features` produced) sits above its own trailing
+    `threshold_percentile`.
+
+    Exists to check the HMM's calm/stressed split isn't an artifact of
+    that specific model choice: if a one-line percentile rule tells a
+    similar story, the regime-conditional findings are more defensible;
+    if it disagrees sharply, that's worth surfacing too (see
+    `compare_hmm_to_rule_based`).
+    """
+    signal = vol_signal.dropna()
+    threshold = float(np.percentile(signal, threshold_percentile))
+    labels = np.where(vol_signal >= threshold, stress_label, calm_label)
+    return pd.Series(labels, index=vol_signal.index, name="regime_rule_based")
+
+
+def compare_hmm_to_rule_based(
+    hmm_labels: pd.Series, rule_labels: pd.Series, calm_label: str = "calm"
+) -> float:
+    """Agreement fraction between the HMM split and the rule-based baseline.
+
+    Any non-calm HMM state (e.g. both 'elevated' and 'stressed' in a
+    3-regime model) is collapsed to 'stressed' so a 2- or 3-regime HMM
+    is directly comparable to the binary rule-based labels.
+    """
+    aligned_hmm, aligned_rule = hmm_labels.align(rule_labels, join="inner")
+    if len(aligned_hmm) == 0:
+        return float("nan")
+    hmm_binary = aligned_hmm.where(aligned_hmm == calm_label, other="stressed")
+    return float((hmm_binary == aligned_rule).mean())
 
 
 def regime_episodes(regime_labels: pd.Series) -> pd.DataFrame:

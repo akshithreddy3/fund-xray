@@ -153,6 +153,32 @@ def run_unconstrained_ols(
     )
 
 
+def compute_factor_vif(factor_returns: pd.DataFrame) -> pd.Series:
+    """Variance Inflation Factor per factor.
+
+    ``VIF_j = 1 / (1 - R_j^2)``, where ``R_j^2`` comes from regressing
+    factor ``j`` on every other factor. The Fama-French/Carhart factors
+    used here (HML and CMA especially) are known to be correlated, so
+    this is checked rather than assumed away: ``VIF_j > 10`` is the
+    standard rule-of-thumb threshold past which factor j's individual
+    beta should be treated as unreliable -- collinearity lets the
+    regression trade weight between correlated factors without much
+    changing the overall fit, so the *individual* coefficient is
+    underdetermined even though the *joint* fit is fine.
+    """
+    columns = list(factor_returns.columns)
+    if len(columns) < 2:
+        return pd.Series({c: 1.0 for c in columns}, name="VIF")
+
+    vif = {}
+    for col in columns:
+        y = factor_returns[col]
+        X = sm.add_constant(factor_returns.drop(columns=[col]), has_constant="add")
+        r_squared = sm.OLS(y, X).fit().rsquared
+        vif[col] = float("inf") if r_squared >= 1.0 else 1.0 / (1.0 - r_squared)
+    return pd.Series(vif, name="VIF")
+
+
 def compare_style_results(
     constrained: StyleAnalysisResult, unconstrained: StyleAnalysisResult
 ) -> pd.DataFrame:

@@ -110,3 +110,63 @@ def test_invalid_metric_raises():
     betas = _make_constant_betas()
     with pytest.raises(ValueError):
         compute_style_drift(betas, metric="manhattan")
+
+
+def _make_noisy_baseline_step_change_betas(
+    n: int = 400, break_at: int = 300, seed: int = 9
+) -> pd.DataFrame:
+    """Like `_make_step_change_betas`, but with real day-to-day noise
+    during the baseline period too, so its drift distribution has
+    nonzero variance (needed to exercise skew/percentile-threshold
+    logic, which is degenerate on an exactly-constant baseline).
+    """
+    rng = np.random.default_rng(seed)
+    dates = pd.date_range("2018-01-01", periods=n, freq="B")
+    before = rng.normal(size=len(FACTOR_COLS))
+    after = before + np.array([0.5, -0.8, 0.9, -0.3, 0.6, -0.4])
+    data = np.where(
+        (np.arange(n) < break_at)[:, None],
+        np.tile(before, (n, 1)),
+        np.tile(after, (n, 1)),
+    )
+    data = data + rng.normal(scale=0.03, size=data.shape)
+    betas = pd.DataFrame(data, index=dates, columns=FACTOR_COLS)
+    betas.insert(0, "const", 0.0001)
+    return betas
+
+
+def test_invalid_threshold_method_raises():
+    betas = _make_constant_betas()
+    with pytest.raises(ValueError):
+        compute_style_drift(betas, threshold_method="bogus")
+
+
+def test_percentile_threshold_method_runs_and_differs_from_gaussian():
+    betas = _make_noisy_baseline_step_change_betas()
+    gaussian = compute_style_drift(betas, metric="euclidean", n_months=6, threshold_method="gaussian")
+    percentile = compute_style_drift(
+        betas, metric="euclidean", n_months=6, threshold_method="percentile", threshold_percentile=95.0
+    )
+
+    assert gaussian.threshold_method == "gaussian"
+    assert percentile.threshold_method == "percentile"
+    # Not asserting a direction (depends on distribution shape) -- just
+    # that both are valid, finite, and the method actually changes the
+    # computed threshold rather than being ignored.
+    assert np.isfinite(gaussian.threshold)
+    assert np.isfinite(percentile.threshold)
+    assert gaussian.threshold != percentile.threshold
+
+
+def test_baseline_skew_is_reported():
+    betas = _make_noisy_baseline_step_change_betas()
+    result = compute_style_drift(betas, metric="euclidean", n_months=6)
+
+    assert np.isfinite(result.baseline_skew)
+
+
+def test_baseline_skew_is_nan_for_perfectly_constant_baseline():
+    betas = _make_constant_betas()
+    result = compute_style_drift(betas, metric="cosine")
+
+    assert np.isnan(result.baseline_skew)

@@ -15,8 +15,11 @@ import pytest
 
 from src.regime_detection import (
     build_regime_features,
+    compare_hmm_to_rule_based,
     fit_regime_hmm,
     regime_episodes,
+    regime_stability_across_seeds,
+    rule_based_regime_labels,
     validate_against_known_stress_periods,
 )
 
@@ -127,3 +130,41 @@ def test_validate_against_known_stress_periods_matches_synthetic_blocks():
     validation = validate_against_known_stress_periods(result, stress_periods=periods)
 
     assert (validation["pct_stressed"] > 0.7).all()
+
+
+def test_regime_stability_high_on_well_separated_synthetic_data():
+    market_returns, vix, _, _ = _make_two_regime_market_data()
+    stability = regime_stability_across_seeds(market_returns, vix, n_regimes=2, seeds=(1, 2, 3))
+
+    assert stability > 0.9
+
+
+def test_rule_based_regime_labels_respects_percentile_threshold():
+    market_returns, vix, _, _ = _make_two_regime_market_data()
+    labels = rule_based_regime_labels(vix, threshold_percentile=80.0)
+
+    assert set(labels.unique()) <= {"calm", "stressed"}
+    # ~80th percentile threshold -> roughly 20% of days flagged stressed.
+    stressed_frac = (labels == "stressed").mean()
+    assert 0.1 < stressed_frac < 0.3
+
+
+def test_compare_hmm_to_rule_based_agrees_on_well_separated_data():
+    market_returns, vix, _, _ = _make_two_regime_market_data()
+    hmm_result = fit_regime_hmm(market_returns, vix=vix, n_regimes=2)
+    rule_labels = rule_based_regime_labels(vix, threshold_percentile=80.0)
+
+    agreement = compare_hmm_to_rule_based(hmm_result.regime_labels, rule_labels)
+    assert agreement > 0.7
+
+
+def test_compare_hmm_to_rule_based_collapses_three_regime_states():
+    market_returns, vix, _, _ = _make_two_regime_market_data()
+    hmm_result = fit_regime_hmm(market_returns, vix=vix, n_regimes=3)
+    rule_labels = rule_based_regime_labels(vix, threshold_percentile=80.0)
+
+    # Should run without error even though the HMM has 3 states and the
+    # rule-based baseline only has 2 -- non-calm states collapse to
+    # "stressed" for comparison purposes.
+    agreement = compare_hmm_to_rule_based(hmm_result.regime_labels, rule_labels)
+    assert 0.0 <= agreement <= 1.0

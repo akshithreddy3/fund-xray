@@ -34,4 +34,4 @@ def test_app_runs_without_exception_on_default_inputs():
     at.run()
 
     assert not at.exception
-    assert len(at.tabs) == 5
+    assert len(at.tabs) == 6

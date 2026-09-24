@@ -11,9 +11,13 @@ import pytest
 
 from src.risk_metrics import (
     OVERALL_LABEL,
+    compute_fixed_beta_cross_check,
     compute_regime_risk_metrics,
+    evaluate_fixed_beta_r_squared,
     historical_var_cvar,
+    split_by_regime,
 )
+from src.style_analysis import run_unconstrained_ols
 
 
 def test_historical_var_cvar_on_known_distribution():
@@ -113,3 +117,66 @@ def test_non_overlapping_regime_dates_are_dropped_and_logged(caplog):
 
     assert metrics[OVERALL_LABEL].n_obs == len(truncated_regime_labels)
     assert "Dropped" in caplog.text
+
+
+def test_idiosyncratic_and_factor_vol_recombine_to_total_vol():
+    fund_returns, excess_returns, factors, regime_labels = _make_two_regime_fund_data()
+    metrics = compute_regime_risk_metrics(fund_returns, excess_returns, factors, regime_labels)
+
+    for m in metrics.values():
+        recombined = np.sqrt(m.idiosyncratic_annualized_vol**2 + m.factor_driven_annualized_vol**2)
+        assert recombined == pytest.approx(m.annualized_vol, rel=1e-6)
+
+
+def test_split_by_regime_matches_compute_regime_risk_metrics_grouping():
+    fund_returns, excess_returns, factors, regime_labels = _make_two_regime_fund_data()
+    subsets = split_by_regime(fund_returns, excess_returns, factors, regime_labels)
+
+    assert set(subsets) == {OVERALL_LABEL, "calm", "stressed"}
+    assert len(subsets["calm"]["fund"]) + len(subsets["stressed"]["fund"]) == len(
+        subsets[OVERALL_LABEL]["fund"]
+    )
+
+
+def test_evaluate_fixed_beta_r_squared_matches_refit_for_identical_betas():
+    fund_returns, excess_returns, factors, regime_labels = _make_two_regime_fund_data()
+    subsets = split_by_regime(fund_returns, excess_returns, factors, regime_labels)
+    calm = subsets["calm"]
+
+    fit = run_unconstrained_ols(calm["excess"], calm["factors"])
+    fixed_r_squared = evaluate_fixed_beta_r_squared(
+        calm["excess"], calm["factors"], fit.alpha, fit.weights
+    )
+
+    # Applying a regime's own fitted coefficients back to itself (fixed,
+    # not refit) should reproduce that regime's own R^2.
+    assert fixed_r_squared == pytest.approx(fit.r_squared, abs=1e-6)
+
+
+def test_fixed_beta_cross_check_reflects_true_beta_shift():
+    n = 1000
+    rng = np.random.default_rng(11)
+    dates = pd.date_range("2018-01-01", periods=n, freq="B")
+    factors = pd.DataFrame(
+        rng.normal(scale=0.01, size=(n, 6)),
+        index=dates,
+        columns=["Mkt-RF", "SMB", "HML", "RMW", "CMA", "Mom"],
+    )
+    calm_beta = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    stressed_beta = np.array([0.2, 0.0, 0.0, 0.0, 0.0, 0.0])  # genuinely different exposure
+    regime = np.array(["calm"] * (n // 2) + ["stressed"] * (n - n // 2))
+    beta_by_row = np.where((regime == "calm")[:, None], calm_beta, stressed_beta)
+    noise = rng.normal(scale=1e-4, size=n)
+    fund_returns = pd.Series(
+        np.einsum("ij,ij->i", factors.to_numpy(), beta_by_row) + noise, index=dates
+    )
+    regime_labels = pd.Series(regime, index=dates)
+
+    result = compute_fixed_beta_cross_check(
+        fund_returns, fund_returns, factors, regime_labels,
+        reference_regime="calm", target_regime="stressed",
+    )
+
+    # Calm beta applied, un-refit, to genuinely-different stressed data
+    # should fit far worse than the stressed regime's own refit.
+    assert result["fixed_beta_r_squared"] < result["refit_r_squared"] - 0.1

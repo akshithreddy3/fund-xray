@@ -10,6 +10,7 @@ import pytest
 
 from src.style_analysis import (
     compare_style_results,
+    compute_factor_vif,
     newey_west_lag,
     run_constrained_style_analysis,
     run_unconstrained_ols,
@@ -95,3 +96,23 @@ def test_compare_style_results_flags_boundary_weights():
         "difference",
         "at_boundary",
     }
+
+
+def test_compute_factor_vif_flags_collinear_factor():
+    factors = _make_synthetic_factors()
+    # Make SMB an almost-exact linear combination of the other factors:
+    # its VIF should blow up, while the independent factors it's built
+    # from should stay low.
+    factors["SMB"] = 0.5 * factors["HML"] + 0.5 * factors["Mom"] + factors["SMB"] * 1e-6
+
+    vif = compute_factor_vif(factors)
+
+    assert vif["SMB"] > 10.0
+    assert vif["RMW"] < 5.0  # untouched, independent factor stays low
+
+
+def test_compute_factor_vif_near_one_for_independent_factors():
+    factors = _make_synthetic_factors()  # i.i.d. normal columns, no correlation by construction
+    vif = compute_factor_vif(factors)
+
+    assert (vif < 1.5).all()

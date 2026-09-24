@@ -47,9 +47,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from itertools import combinations
+from typing import Literal
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from src import config
 from src.data_loader import DataLoader
@@ -58,6 +60,7 @@ from src.kalman_beta import rolling_ols_betas
 logger = logging.getLogger(__name__)
 
 DistanceMetric = str  # "cosine" | "euclidean"
+ThresholdMethod = Literal["gaussian", "percentile"]
 
 
 @dataclass
@@ -66,7 +69,9 @@ class DriftScoreResult:
     baseline_vector: pd.Series  # index=factor name
     metric: DistanceMetric
     threshold: float
+    threshold_method: ThresholdMethod
     flagged_events: pd.DataFrame  # columns: start, end, peak_date, peak_drift
+    baseline_skew: float  # scipy skew of the baseline-period drift distribution
 
 
 def cosine_distance(u: np.ndarray, v: np.ndarray) -> float:
@@ -141,6 +146,8 @@ def compute_style_drift(
     metric: DistanceMetric = "cosine",
     n_months: int = config.STYLE_DRIFT_BASELINE_MONTHS,
     threshold_std: float = config.STYLE_DRIFT_THRESHOLD_STD,
+    threshold_method: ThresholdMethod = "gaussian",
+    threshold_percentile: float = 95.0,
 ) -> DriftScoreResult:
     """Distance-from-baseline time series plus a data-driven drift threshold.
 
@@ -149,6 +156,15 @@ def compute_style_drift(
     invest?" question). Pass an explicit `baseline_vector` (e.g. a
     stated-mandate weight vector) to instead ask "has it moved from
     what it says it does?".
+
+    `threshold_method="gaussian"` (default, unchanged behavior) flags a
+    drift event past `baseline mean + threshold_std * baseline std`,
+    which implicitly assumes the baseline-period drift distribution is
+    roughly symmetric. Cosine/Euclidean distance are bounded at 0 and
+    often right-skewed, so `DriftScoreResult.baseline_skew` is always
+    reported, and `threshold_method="percentile"` offers a
+    distribution-free alternative: flag past the baseline period's own
+    `threshold_percentile`-th percentile instead.
     """
     if metric not in _METRICS:
         raise ValueError(f"metric must be one of {list(_METRICS)}, got '{metric}'")
@@ -179,21 +195,45 @@ def compute_style_drift(
     drift.name = "drift"
 
     baseline_cutoff = exposures.index[0] + pd.DateOffset(months=n_months)
-    baseline_period_drift = drift.loc[: baseline_cutoff - pd.Timedelta(days=1)]
-    threshold = float(
-        baseline_period_drift.mean() + threshold_std * baseline_period_drift.std()
+    baseline_period_drift = drift.loc[: baseline_cutoff - pd.Timedelta(days=1)].dropna()
+
+    if threshold_method == "gaussian":
+        threshold = float(
+            baseline_period_drift.mean() + threshold_std * baseline_period_drift.std()
+        )
+    elif threshold_method == "percentile":
+        threshold = float(np.percentile(baseline_period_drift, threshold_percentile))
+    else:
+        raise ValueError(
+            f"threshold_method must be 'gaussian' or 'percentile', got '{threshold_method}'"
+        )
+
+    baseline_skew = (
+        float(stats.skew(baseline_period_drift))
+        if len(baseline_period_drift) >= 3 and baseline_period_drift.std() > 1e-9
+        else float("nan")
     )
+    if abs(baseline_skew) > 1.0:
+        logger.warning(
+            "Baseline-period drift distribution is notably skewed (skew=%.2f) -- the "
+            "gaussian mean+%.1f*std threshold may be a poor fit; consider "
+            "threshold_method='percentile'.",
+            baseline_skew,
+            threshold_std,
+        )
 
     flagged = drift > threshold
     flagged_events = _summarize_flagged_events(drift, flagged)
 
     logger.info(
-        "Style drift (%s): threshold=%.4f (baseline mean=%.4f, std=%.4f); "
-        "%d flagged episode(s).",
+        "Style drift (%s, threshold_method=%s): threshold=%.4f (baseline mean=%.4f, "
+        "std=%.4f, skew=%.2f); %d flagged episode(s).",
         metric,
+        threshold_method,
         threshold,
         baseline_period_drift.mean(),
         baseline_period_drift.std(),
+        baseline_skew,
         len(flagged_events),
     )
 
@@ -202,7 +242,9 @@ def compute_style_drift(
         baseline_vector=baseline_vector,
         metric=metric,
         threshold=threshold,
+        threshold_method=threshold_method,
         flagged_events=flagged_events,
+        baseline_skew=baseline_skew,
     )
 
 

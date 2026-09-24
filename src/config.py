@@ -67,6 +67,15 @@ RISK_FREE_COLUMN = "RF"
 
 TRADING_DAYS_PER_YEAR = 252
 
+# Standard rule-of-thumb threshold above which a factor's Variance
+# Inflation Factor indicates its individual beta is unreliable due to
+# collinearity with the other factors (see style_analysis.compute_factor_vif).
+VIF_HIGH_THRESHOLD = 10.0
+
+# p-value threshold below which an unconstrained regression's beta is
+# treated as statistically distinguishable from zero (conventional default).
+SIGNIFICANCE_ALPHA = 0.05
+
 # --------------------------------------------------------------------------
 # Time-varying exposure
 # --------------------------------------------------------------------------
