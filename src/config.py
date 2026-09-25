@@ -29,6 +29,7 @@ FACTOR_CACHE_MAX_AGE_DAYS = 7
 # --------------------------------------------------------------------------
 DEFAULT_START_DATE = date(2010, 1, 1)
 DEFAULT_END_DATE = date.today()
+MIN_SELECTABLE_DATE = date(1990, 1, 1)
 
 # --------------------------------------------------------------------------
 # Tickers

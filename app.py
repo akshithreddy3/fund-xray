@@ -140,8 +140,18 @@ st.sidebar.caption("Returns-based style analysis & regime-conditional risk attri
 ticker = st.sidebar.text_input("Fund / ETF ticker", value=config.DEFAULT_FUND_TICKER).strip().upper()
 
 date_col1, date_col2 = st.sidebar.columns(2)
-start_date = date_col1.date_input("Start date", value=config.DEFAULT_START_DATE)
-end_date = date_col2.date_input("End date", value=config.DEFAULT_END_DATE)
+start_date = date_col1.date_input(
+    "Start date",
+    value=config.DEFAULT_START_DATE,
+    min_value=config.MIN_SELECTABLE_DATE,
+    max_value=date.today(),
+)
+end_date = date_col2.date_input(
+    "End date",
+    value=config.DEFAULT_END_DATE,
+    min_value=config.MIN_SELECTABLE_DATE,
+    max_value=date.today(),
+)
 
 rolling_window = st.sidebar.select_slider(
     "Rolling window (trading days)",
@@ -174,6 +184,12 @@ if not ticker:
 if start_date >= end_date:
     st.error("Start date must be before end date.")
     st.stop()
+if (end_date - start_date).days < 1095:
+    st.sidebar.warning(
+        "Short date range: rolling/Kalman burn-in and regime detection need several "
+        "years of data, and the range should include at least one market downturn. "
+        "Results may be unreliable."
+    )
 
 st.title(f"Fund X-Ray: {ticker}")
 

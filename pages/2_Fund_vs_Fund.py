@@ -86,8 +86,20 @@ st.sidebar.title("Fund vs. Fund")
 st.sidebar.caption("Compare 2-3 tickers side by side.")
 
 date_col1, date_col2 = st.sidebar.columns(2)
-start_date = date_col1.date_input("Start date", value=config.DEFAULT_START_DATE, key="compare_start")
-end_date = date_col2.date_input("End date", value=config.DEFAULT_END_DATE, key="compare_end")
+start_date = date_col1.date_input(
+    "Start date",
+    value=config.DEFAULT_START_DATE,
+    min_value=config.MIN_SELECTABLE_DATE,
+    max_value=date.today(),
+    key="compare_start",
+)
+end_date = date_col2.date_input(
+    "End date",
+    value=config.DEFAULT_END_DATE,
+    min_value=config.MIN_SELECTABLE_DATE,
+    max_value=date.today(),
+    key="compare_end",
+)
 rolling_window = st.sidebar.select_slider(
     "Rolling window (trading days)", options=sorted(config.ROLLING_WINDOWS), value=min(config.ROLLING_WINDOWS)
 )
@@ -107,6 +119,12 @@ if len(tickers) < 2:
 if start_date >= end_date:
     st.error("Start date must be before end date.")
     st.stop()
+if (end_date - start_date).days < 1095:
+    st.sidebar.warning(
+        "Short date range: rolling/Kalman burn-in and regime detection need several "
+        "years of data, and the range should include at least one market downturn. "
+        "Results may be unreliable."
+    )
 
 spy_returns, vix = load_market_regime_inputs(start_date, end_date)
 regime_result = compute_regimes(spy_returns, vix, n_regimes)
